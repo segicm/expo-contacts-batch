@@ -17,8 +17,11 @@ On an idle address book a single write takes ~10 ms; the slowdown comes from the
 
 ## Install
 
+Not on npm yet, so install from GitHub, pinned to a release tag:
+
 ```sh
-npx expo install expo-contacts-batch
+npm install github:segicm/expo-contacts-batch#v0.1.0
+# or: yarn add expo-contacts-batch@github:segicm/expo-contacts-batch#v0.1.0
 ```
 
 It contains native code, so rebuild the app (`npx expo run:ios`, `npx expo run:android`, or an EAS build). It won't run in Expo Go.
