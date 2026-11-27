@@ -1,0 +1,40 @@
+{
+  "name": "expo-contacts-batch",
+  "version": "0.1.0",
+  "description": "Batched device address book writes for Expo: create, update and remove many contacts per native transaction (iOS CNSaveRequest, Android applyBatch).",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "expo-module.config.json",
+    "ios/*.swift",
+    "ios/*.podspec",
+    "android/build.gradle",
+    "android/src/**"
+  ],
+  "keywords": [
+    "react-native",
+    "expo",
+    "expo-module",
+    "contacts",
+    "address-book",
+    "batch",
+    "ios",
+    "android"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/segicm/expo-contacts-batch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/segicm/expo-contacts-batch/issues"
+  },
+  "homepage": "https://github.com/segicm/expo-contacts-batch#readme",
+  "author": "Milos Segic",
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": ">=52",
+    "react-native": "*"
+  }
+}

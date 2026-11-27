@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ExpoContactsBatchModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.contactsbatch.ExpoContactsBatchModule"]
+  }
+}
