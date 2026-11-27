@@ -26,3 +26,5 @@ export const addContacts = (contacts) => ensure().addContacts(contacts);
 export const updateContacts = (contacts) => ensure().updateContacts(contacts);
 
 export const removeContacts = (ids) => ensure().removeContacts(ids.map(String));
+
+export const snapshot = () => ensure().snapshot();

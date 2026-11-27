@@ -8,7 +8,6 @@ import android.provider.ContactsContract.CommonDataKinds.Email
 import android.provider.ContactsContract.CommonDataKinds.Organization
 import android.provider.ContactsContract.CommonDataKinds.Phone
 import android.provider.ContactsContract.CommonDataKinds.StructuredName
-import android.provider.ContactsContract.Contacts
 import android.provider.ContactsContract.Data
 import android.provider.ContactsContract.RawContacts
 import expo.modules.kotlin.exception.Exceptions
@@ -23,6 +22,12 @@ private const val MAX_OPS_PER_BATCH = 400
  * applyBatch instead of one per call. A batch is all-or-nothing, so when one
  * fails it is retried one contact at a time and only the bad record reports
  * an error.
+ *
+ * Ids are RAW contact ids, not aggregate contact ids (what expo-contacts
+ * uses). Android merges raw contacts that look like the same person into one
+ * aggregate — sometimes after the insert — so an aggregate id we stored can
+ * vanish, and deleting by aggregate id would also delete any of the user's
+ * own raw contacts merged into it. A raw id only ever names the row we wrote.
  */
 class ExpoContactsBatchModule : Module() {
   private val resolver: ContentResolver
@@ -50,6 +55,39 @@ class ExpoContactsBatchModule : Module() {
     AsyncFunction("removeContacts") { ids: List<String> ->
       removeAll(ids)
     }
+
+    // Every live raw contact with its phone numbers, so callers can tell the
+    // rows they wrote (by raw id) apart from the user's own — even when
+    // Android has merged both into one aggregate contact.
+    AsyncFunction("snapshot") {
+      snapshot()
+    }
+  }
+
+  private fun snapshot(): List<Map<String, Any?>> {
+    val phonesByRaw = LinkedHashMap<Long, MutableList<Map<String, Any?>>>()
+    resolver.query(
+      RawContacts.CONTENT_URI,
+      arrayOf(RawContacts._ID),
+      "${RawContacts.DELETED} = 0",
+      null,
+      null
+    )?.use { cursor ->
+      while (cursor.moveToNext()) phonesByRaw[cursor.getLong(0)] = ArrayList()
+    }
+    resolver.query(
+      Data.CONTENT_URI,
+      arrayOf(Data.RAW_CONTACT_ID, Phone.NUMBER),
+      "${Data.MIMETYPE} = ?",
+      arrayOf(Phone.CONTENT_ITEM_TYPE),
+      null
+    )?.use { cursor ->
+      while (cursor.moveToNext()) {
+        val number = cursor.getString(1) ?: continue
+        phonesByRaw[cursor.getLong(0)]?.add(mapOf("number" to number))
+      }
+    }
+    return phonesByRaw.map { (id, phones) -> mapOf("id" to id.toString(), "phoneNumbers" to phones) }
   }
 
   private fun addAll(inputs: List<Map<String, Any?>>): List<Map<String, Any?>> {
@@ -90,11 +128,8 @@ class ExpoContactsBatchModule : Module() {
         }
       }
     }
-    // Callers (and expo-contacts) identify contacts by aggregate contact id.
-    val contactIds = contactIdsFor(rawIds.filterNotNull())
     return rawIds.map { rawId ->
-      val contactId = rawId?.let { contactIds[it] }
-      if (contactId != null) mapOf("id" to contactId.toString()) else mapOf("error" to "insert_failed")
+      if (rawId != null) mapOf("id" to rawId.toString()) else mapOf("error" to "insert_failed")
     }
   }
 
@@ -163,14 +198,14 @@ class ExpoContactsBatchModule : Module() {
       if (parsed == null) results[index] = mapOf("error" to "invalid_id") else valid.add(index to parsed)
     }
     valid.chunked(MAX_OPS_PER_BATCH).forEach { chunk ->
-      // Deleting an id that is already gone affects 0 rows: counts as removed.
-      val ops = ArrayList(chunk.map { (_, id) -> deleteOp(id) })
+      // One DELETE ... WHERE _id IN (...) per chunk. Ids already gone simply
+      // match nothing and count as removed.
       try {
-        resolver.applyBatch(ContactsContract.AUTHORITY, ops)
+        resolver.delete(rawContactsAsOwner, "${RawContacts._ID} IN (${chunk.joinToString(",") { it.second.toString() }})", null)
       } catch (e: Exception) {
         chunk.forEach { (index, id) ->
           try {
-            resolver.applyBatch(ContactsContract.AUTHORITY, arrayListOf(deleteOp(id)))
+            resolver.delete(ContentUris.withAppendedId(rawContactsAsOwner, id), null, null)
           } catch (single: Exception) {
             results[index] = mapOf("error" to (single.message ?: "remove_failed"))
           }
@@ -180,24 +215,14 @@ class ExpoContactsBatchModule : Module() {
     return results
   }
 
-  private fun contactIdsFor(rawIds: List<Long>): Map<Long, Long> {
-    val byRawId = HashMap<Long, Long>()
-    rawIds.chunked(500).forEach { part ->
-      resolver.query(
-        RawContacts.CONTENT_URI,
-        arrayOf(RawContacts._ID, RawContacts.CONTACT_ID),
-        "${RawContacts._ID} IN (${part.joinToString(",")})",
-        null,
-        null
-      )?.use { cursor ->
-        while (cursor.moveToNext()) byRawId[cursor.getLong(0)] = cursor.getLong(1)
-      }
-    }
-    return byRawId
-  }
-
-  private fun deleteOp(contactId: Long) =
-    ContentProviderOperation.newDelete(ContentUris.withAppendedId(Contacts.CONTENT_URI, contactId)).build()
+  // Deletes as the owner of these rows (CALLER_IS_SYNCADAPTER): a hard delete
+  // right away, instead of marking each row DELETED for a sync adapter to
+  // purge later — which makes bulk removal crawl. Only ever applied to raw
+  // ids we created, so anything the user merged with them stays.
+  private val rawContactsAsOwner =
+    RawContacts.CONTENT_URI.buildUpon()
+      .appendQueryParameter(ContactsContract.CALLER_IS_SYNCADAPTER, "true")
+      .build()
 
   private fun dataOp(back: Int, mimeType: String) =
     ContentProviderOperation.newInsert(Data.CONTENT_URI)

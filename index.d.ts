@@ -24,7 +24,12 @@ export const isAvailable: boolean;
 
 /**
  * Creates the contacts. Returns their new device ids, aligned with the input.
- * Ids are the same ones expo-contacts uses (`getContactsAsync`, `removeContactAsync`, …).
+ *
+ * Ids: on iOS, contact identifiers (the same ones expo-contacts uses). On Android, RAW
+ * contact ids — not the aggregate ids expo-contacts uses. Android merges raw contacts it
+ * thinks are the same person into one aggregate, sometimes after the insert, so an
+ * aggregate id can disappear and can cover the user's own rows. A raw id only ever names
+ * the row this package wrote. Use `snapshot()` (not `expo-contacts`) to read ids back.
  */
 export function addContacts(contacts: BatchContact[]): Promise<WriteResult[]>;
 
@@ -36,5 +41,21 @@ export function addContacts(contacts: BatchContact[]): Promise<WriteResult[]>;
  */
 export function updateContacts(contacts: (BatchContact & { id: string })[]): Promise<WriteResult[]>;
 
-/** Deletes the contacts. An id that is already gone counts as removed. */
+/**
+ * Deletes the contacts. An id that is already gone counts as removed.
+ * On Android only the given raw contacts are deleted (hard delete); anything the user
+ * merged with them stays.
+ */
 export function removeContacts(ids: string[]): Promise<RemoveResult[]>;
+
+export interface SnapshotContact {
+  id: string;
+  phoneNumbers: { number: string }[];
+}
+
+/**
+ * Every contact on the device with its phone numbers, in the same id space as the calls
+ * above: Android raw contacts / iOS non-unified contacts. Use it to check which of the
+ * contacts you wrote still exist, and which numbers belong to the user's own contacts.
+ */
+export function snapshot(): Promise<SnapshotContact[]>;

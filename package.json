@@ -1,12 +1,13 @@
 {
   "name": "expo-contacts-batch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Batched device address book writes for Expo: create, update and remove many contacts per native transaction (iOS CNSaveRequest, Android applyBatch).",
   "main": "index.js",
   "types": "index.d.ts",
   "files": [
     "index.js",
     "index.d.ts",
+    "CHANGELOG.md",
     "expo-module.config.json",
     "ios/*.swift",
     "ios/*.podspec",

@@ -57,6 +57,22 @@ public class ExpoContactsBatchModule: Module {
       return results
     }
 
+    // Every contact with its phone numbers, not unified: a contact the user
+    // linked to one of ours stays a separate entry, so callers can tell the
+    // records they wrote apart from the user's own.
+    AsyncFunction("snapshot") { () -> [[String: Any]] in
+      let request = CNContactFetchRequest(keysToFetch: [CNContactIdentifierKey, CNContactPhoneNumbersKey] as [CNKeyDescriptor])
+      request.unifyResults = false
+      var out = [[String: Any]]()
+      try self.store.enumerateContacts(with: request) { contact, _ in
+        out.append([
+          "id": contact.identifier,
+          "phoneNumbers": contact.phoneNumbers.map { ["number": $0.value.stringValue] },
+        ])
+      }
+      return out
+    }
+
     AsyncFunction("removeContacts") { (ids: [String]) -> [[String: Any]] in
       let found = try self.fetchMutable(ids: ids)
       // A contact that is already gone counts as removed.
@@ -104,12 +120,16 @@ public class ExpoContactsBatchModule: Module {
     }
   }
 
+  /// Fetches exactly the records with these ids, not unified: a unified
+  /// contact would pull in (and an update/delete would touch) whatever the
+  /// user linked to ours.
   private func fetchMutable(ids: [String]) throws -> [String: CNMutableContact] {
     if ids.isEmpty { return [:] }
-    let predicate = CNContact.predicateForContacts(withIdentifiers: ids)
-    let contacts = try store.unifiedContacts(matching: predicate, keysToFetch: Self.keys)
+    let request = CNContactFetchRequest(keysToFetch: Self.keys)
+    request.predicate = CNContact.predicateForContacts(withIdentifiers: ids)
+    request.unifyResults = false
     var byId = [String: CNMutableContact]()
-    for contact in contacts {
+    try store.enumerateContacts(with: request) { contact, _ in
       if let mutable = contact.mutableCopy() as? CNMutableContact {
         byId[contact.identifier] = mutable
       }
